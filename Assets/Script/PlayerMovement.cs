@@ -1,44 +1,90 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class PlayerMovement : MonoBehaviour
 {
+    [Header("Movement")]
+    public float walkSpeed = 5f;
+    public float rotationSpeed = 10f;
+
+    [Header("References")]
     public InputAction MoveAction;
+    public Transform cameraTransform;
 
-    public float walkSpeed = 1.0f;
-    public float turnSpeed = 20f;
-    [SerializeField] private Animator anim;
-
-    Rigidbody m_Rigidbody;
-    Vector3 m_Movement;
-    Quaternion m_Rotation = Quaternion.identity;
+    private Rigidbody rb;
+    private Animator anim;
 
     void Start()
     {
-        m_Rigidbody = GetComponent<Rigidbody>();
+        rb = GetComponent<Rigidbody>();
+        anim = GetComponent<Animator>();
+
         MoveAction.Enable();
-        anim=GetComponent<Animator>();
+
+        // Automatically get Main Camera if not assigned
+        if (cameraTransform == null)
+        {
+            cameraTransform = UnityEngine.Camera.main.transform;
+        }
     }
 
     void FixedUpdate()
     {
-        var pos = MoveAction.ReadValue<Vector2>();
+        // Get WASD input
+        Vector2 input = MoveAction.ReadValue<Vector2>();
 
-        float horizontal = pos.x;
-        float vertical = pos.y;
-
-        m_Movement.Set(horizontal, 0f, vertical);
-        m_Movement.Normalize();
-        bool hasHorizontalInput = !Mathf.Approximately(horizontal, 0f);
-        bool hasVerticalInput = !Mathf.Approximately(vertical, 0f);
-        bool isWalking = hasHorizontalInput || hasVerticalInput;
+        // Walking animation
+        bool isWalking = input != Vector2.zero;
         anim.SetBool("IsWalking", isWalking);
-        Vector3 desiredForward = Vector3.RotateTowards(transform.forward, m_Movement, turnSpeed * Time.deltaTime, 0f);
-        m_Rotation = Quaternion.LookRotation(desiredForward);
 
-        m_Rigidbody.MoveRotation(m_Rotation);
-        m_Rigidbody.MovePosition(m_Rigidbody.position + m_Movement * walkSpeed * Time.deltaTime);
+        // Camera directions
+        Vector3 cameraForward = cameraTransform.forward;
+        Vector3 cameraRight = cameraTransform.right;
+
+        // Ignore camera up/down angle
+        cameraForward.y = 0;
+        cameraRight.y = 0;
+
+        cameraForward.Normalize();
+        cameraRight.Normalize();
+
+        // Movement relative to camera
+        Vector3 movement =
+            cameraForward * input.y +
+            cameraRight * input.x;
+
+        // Prevent faster diagonal movement
+        movement.Normalize();
+
+        // Move player
+        rb.MovePosition(
+            rb.position +
+            movement * walkSpeed * Time.fixedDeltaTime
+        );
+
+        // Rotate player towards movement direction
+        if (movement != Vector3.zero)
+        {
+            Quaternion targetRotation =
+                Quaternion.LookRotation(movement);
+
+            rb.MoveRotation(
+                Quaternion.Slerp(
+                    rb.rotation,
+                    targetRotation,
+                    rotationSpeed * Time.fixedDeltaTime
+                )
+            );
+        }
+    }
+
+    void OnEnable()
+    {
+        MoveAction.Enable();
+    }
+
+    void OnDisable()
+    {
+        MoveAction.Disable();
     }
 }
